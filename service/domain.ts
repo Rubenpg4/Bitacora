@@ -87,6 +87,7 @@ import {
   validDay,
   taskCompletionDay,
   isTaskCompletedOnDay,
+  incidentState,
 } from '../shared/model.js';
 export { blank, initialState };
 export const MIN_SESSION_DURATION_MINUTES = 15;
@@ -2227,6 +2228,7 @@ export class Domain {
           description: r.description,
           solution: r.solution,
           resolvedDate: r.resolvedDate,
+          state: incidentState(r),
         };
       case 'idea':
         return { project: r.project, date: r.date, description: r.description };

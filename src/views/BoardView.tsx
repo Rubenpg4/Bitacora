@@ -12,6 +12,7 @@ import { useState, useRef, type DragEvent, type ReactNode } from 'react';
 import {
   STATES,
   daysUntil,
+  incidentState,
   isIncidentResolved,
   madridDate,
   taskDateLabel,
@@ -52,8 +53,16 @@ interface BoardViewProps {
   endIncidentDrag?: () => void;
   moveIncident?: (
     incident: Incident,
-    change: Partial<Pick<Incident, 'date' | 'resolvedDate' | 'solution'>>,
+    change: Partial<Pick<Incident, 'date' | 'resolvedDate' | 'solution' | 'state'>>,
   ) => void;
+}
+
+function incidentBoardDate(incident: Incident) {
+  return isIncidentResolved(incident) ? incident.resolvedDate : incident.date;
+}
+
+function incidentGroupKey(incident: Incident) {
+  return `incident:${incidentState(incident)}:${incidentBoardDate(incident)}`;
 }
 
 function TaskDeadline({ due, today }: { due: string; today: string }) {
@@ -117,7 +126,13 @@ export default function BoardView({
   const unresolvedIncidents = incidents.filter((incident) => !isIncidentResolved(incident));
   const resolvedIncidents = incidents.filter((incident) => isIncidentResolved(incident));
   const overdueCount = tasks.filter((task) => isOverdueTask(task, today)).length;
-  const groupKeys = [...new Set(tasks.map((task) => `${task.state}:${task.due}`))];
+  const boardIncidents = showIncidents ? incidents : [];
+  const groupKeys = [
+    ...new Set([
+      ...tasks.map((task) => `${task.state}:${task.due}`),
+      ...boardIncidents.map(incidentGroupKey),
+    ]),
+  ];
   const allGroupsExpanded =
     groupKeys.length > 0 && groupKeys.every((key) => expandedGroups.has(key));
 
@@ -127,6 +142,111 @@ export default function BoardView({
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
+    });
+  }
+
+  function renderIncidentCard(incident: Incident) {
+    const resolved = isIncidentResolved(incident);
+    return (
+      <article
+        className={`task-card incident-card ${resolved ? 'resolved' : 'unresolved'} ${selectedId === incident.id ? 'selected' : ''} ${draggedIncidentId === incident.id ? 'dragging' : ''}`}
+        key={`incident-${incident.id}`}
+        draggable={Boolean(startIncidentDrag)}
+        onDragStart={(event) => startIncidentDrag?.(event, incident)}
+        onDragEnd={() => {
+          setDropState('');
+          endIncidentDrag?.();
+        }}
+      >
+        <button
+          className="task-card-main"
+          onClick={() =>
+            openIncident ? openIncident(incident) : openTask(incident as unknown as Task)
+          }
+        >
+          <div className="row spread" style={{ alignItems: 'center' }}>
+            <span className="card-project">
+              {projectName(incident.project, incident.subprojectId)}
+            </span>
+            {resolved ? (
+              <Badge tone="green">
+                <CheckCircle2 size={11} style={{ marginRight: 4 }} />
+                Solucionada
+              </Badge>
+            ) : (
+              <Badge tone="red">
+                <AlertCircle size={11} style={{ marginRight: 4 }} />
+                Sin solucionar
+              </Badge>
+            )}
+          </div>
+          <h3>{incident.title}</h3>
+          {resolved ? (
+            <>
+              <div className="incident-solution-preview">
+                <strong>Solución</strong>
+                <p title={markdownToPlainText(incident.solution)}>
+                  <MarkdownPreview source={incident.solution} />
+                </p>
+              </div>
+              <div className="incident-card-date">
+                <CheckCircle2 size={14} />
+                <span>Resuelta el {taskDateLabel(incident.resolvedDate)}</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <p>
+                {incident.description ? (
+                  <MarkdownPreview source={incident.description} />
+                ) : (
+                  'Sin descripción detallada.'
+                )}
+              </p>
+              <div className="incident-card-date">
+                <CalendarDays size={14} />
+                <span>{taskDateLabel(incident.date)}</span>
+              </div>
+            </>
+          )}
+        </button>
+        <CopyRecordId id={incident.id} title={incident.title} />
+      </article>
+    );
+  }
+
+  function renderIncidentGroups(columnIncidents: Incident[]) {
+    const byDate = new Map<string, Incident[]>();
+    for (const incident of columnIncidents) {
+      const date = incidentBoardDate(incident);
+      byDate.set(date, [...(byDate.get(date) ?? []), incident]);
+    }
+    return [...byDate].map(([date, dayIncidents]) => {
+      const groupKey = incidentGroupKey(dayIncidents[0]);
+      const resolved = isIncidentResolved(dayIncidents[0]);
+      const Icon = resolved ? CheckCircle2 : AlertCircle;
+      return (
+        <details
+          className={`board-day-group incident-group ${resolved ? 'resolved' : 'unresolved'}`}
+          key={`incident-${date}`}
+          open={expandedGroups.has(groupKey)}
+        >
+          <summary
+            onClick={(event) => {
+              event.preventDefault();
+              toggleGroup(groupKey);
+            }}
+          >
+            <Icon size={15} aria-hidden="true" />
+            <span className="board-day-label">{taskDateLabel(date)}</span>
+            <span className="board-day-count">
+              {dayIncidents.length} {dayIncidents.length === 1 ? 'incidencia' : 'incidencias'}
+            </span>
+            <ChevronDown className="board-day-chevron" size={16} aria-hidden="true" />
+          </summary>
+          {dayIncidents.map(renderIncidentCard)}
+        </details>
+      );
     });
   }
 
@@ -238,14 +358,10 @@ export default function BoardView({
             tasksByDue.set(task.due, dayTasks);
           }
 
-          const columnIncidents =
-            showIncidents && state === 'Por hacer'
-              ? [...unresolvedIncidents].sort((a, b) => a.date.localeCompare(b.date))
-              : showIncidents && state === 'Completada'
-                ? [...resolvedIncidents].sort((a, b) =>
-                    (a.resolvedDate || a.date).localeCompare(b.resolvedDate || b.date),
-                  )
-                : [];
+          const columnIncidents = boardIncidents
+            .filter((incident) => incidentState(incident) === state)
+            .sort((a, b) => incidentBoardDate(a).localeCompare(incidentBoardDate(b)));
+          const incidentGroups = renderIncidentGroups(columnIncidents);
 
           return (
             <section
@@ -258,16 +374,10 @@ export default function BoardView({
                   setDropState(state);
                   return;
                 }
-                if (draggedIncident) {
-                  const isResolved = isIncidentResolved(draggedIncident);
-                  if (
-                    (isResolved && state === 'Por hacer') ||
-                    (!isResolved && state === 'Completada')
-                  ) {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                    setDropState(state);
-                  }
+                if (draggedIncident && incidentState(draggedIncident) !== state) {
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                  setDropState(state);
                 }
               }}
               onDragLeave={(event) => {
@@ -280,15 +390,15 @@ export default function BoardView({
                   moveTask(draggedTask, { state });
                   return;
                 }
-                if (draggedIncident && moveIncident) {
-                  const isResolved = isIncidentResolved(draggedIncident);
-                  if (state === 'Por hacer' && isResolved) {
-                    // Reabrir incidencia
-                    moveIncident(draggedIncident, { solution: '', resolvedDate: '' });
-                  } else if (state === 'Completada' && !isResolved) {
-                    // Abrir editor para ingresar la solución requerida
-                    if (openIncident) openIncident(draggedIncident);
-                  }
+                if (!draggedIncident || !moveIncident) return;
+                if (incidentState(draggedIncident) === state) return;
+                if (state === 'Completada') {
+                  // Completar exige solución: se pide en su editor.
+                  openIncident?.(draggedIncident);
+                } else if (isIncidentResolved(draggedIncident)) {
+                  moveIncident(draggedIncident, { solution: '', resolvedDate: '', state });
+                } else {
+                  moveIncident(draggedIncident, { state });
                 }
               }}
             >
@@ -296,62 +406,18 @@ export default function BoardView({
                 <span className={`column-dot c${index}`} />
                 {state}
                 <b>{columnTasks.length}</b>
-                {showIncidents && columnIncidents.length > 0 && (
+                {columnIncidents.length > 0 && (
                   <span
-                    className={`incident-col-badge ${state === 'Por hacer' ? 'unresolved' : 'resolved'}`}
-                    title={`${columnIncidents.length} ${state === 'Por hacer' ? 'incidencias pendientes' : 'incidencias resueltas'}`}
+                    className={`incident-col-badge ${state === 'Completada' ? 'resolved' : 'unresolved'}`}
+                    title={`${columnIncidents.length} ${state === 'Completada' ? 'incidencias resueltas' : 'incidencias pendientes'}`}
                   >
                     {columnIncidents.length}
                   </span>
                 )}
               </h2>
 
-              {/* Incidencias sin solucionar en Por hacer */}
-              {state === 'Por hacer' &&
-                columnIncidents.map((incident) => (
-                  <article
-                    className={`task-card incident-card unresolved ${selectedId === incident.id ? 'selected' : ''} ${draggedIncidentId === incident.id ? 'dragging' : ''}`}
-                    key={`incident-${incident.id}`}
-                    draggable={Boolean(startIncidentDrag)}
-                    onDragStart={(event) => startIncidentDrag?.(event, incident)}
-                    onDragEnd={() => {
-                      setDropState('');
-                      endIncidentDrag?.();
-                    }}
-                  >
-                    <button
-                      className="task-card-main"
-                      onClick={() =>
-                        openIncident
-                          ? openIncident(incident)
-                          : openTask(incident as unknown as Task)
-                      }
-                    >
-                      <div className="row spread" style={{ alignItems: 'center' }}>
-                        <span className="card-project">
-                          {projectName(incident.project, incident.subprojectId)}
-                        </span>
-                        <Badge tone="red">
-                          <AlertCircle size={11} style={{ marginRight: 4 }} />
-                          Sin solucionar
-                        </Badge>
-                      </div>
-                      <h3>{incident.title}</h3>
-                      <p>
-                        {incident.description ? (
-                          <MarkdownPreview source={incident.description} />
-                        ) : (
-                          'Sin descripción detallada.'
-                        )}
-                      </p>
-                      <div className="incident-card-date">
-                        <CalendarDays size={14} />
-                        <span>{taskDateLabel(incident.date)}</span>
-                      </div>
-                    </button>
-                    <CopyRecordId id={incident.id} title={incident.title} />
-                  </article>
-                ))}
+              {/* Las abiertas van antes que las tareas y las resueltas, después. */}
+              {state !== 'Completada' && incidentGroups}
 
               {/* Tareas agrupadas por fecha de finalización */}
               {[...tasksByDue].map(([due, dayTasks]) => {
@@ -441,55 +507,7 @@ export default function BoardView({
                 );
               })}
 
-              {/* Incidencias solucionadas en Completada */}
-              {state === 'Completada' &&
-                columnIncidents.map((incident) => (
-                  <article
-                    className={`task-card incident-card resolved ${selectedId === incident.id ? 'selected' : ''} ${draggedIncidentId === incident.id ? 'dragging' : ''}`}
-                    key={`incident-${incident.id}`}
-                    draggable={Boolean(startIncidentDrag)}
-                    onDragStart={(event) => startIncidentDrag?.(event, incident)}
-                    onDragEnd={() => {
-                      setDropState('');
-                      endIncidentDrag?.();
-                    }}
-                  >
-                    <button
-                      className="task-card-main"
-                      onClick={() =>
-                        openIncident
-                          ? openIncident(incident)
-                          : openTask(incident as unknown as Task)
-                      }
-                    >
-                      <div className="row spread" style={{ alignItems: 'center' }}>
-                        <span className="card-project">
-                          {projectName(incident.project, incident.subprojectId)}
-                        </span>
-                        <Badge tone="green">
-                          <CheckCircle2 size={11} style={{ marginRight: 4 }} />
-                          Solucionada
-                        </Badge>
-                      </div>
-                      <h3>{incident.title}</h3>
-                      {incident.solution && (
-                        <div className="incident-solution-preview">
-                          <strong>Solución</strong>
-                          <p title={markdownToPlainText(incident.solution)}>
-                            <MarkdownPreview source={incident.solution} />
-                          </p>
-                        </div>
-                      )}
-                      <div className="incident-card-date">
-                        <CheckCircle2 size={14} />
-                        <span>
-                          Resuelta el {taskDateLabel(incident.resolvedDate || incident.date)}
-                        </span>
-                      </div>
-                    </button>
-                    <CopyRecordId id={incident.id} title={incident.title} />
-                  </article>
-                ))}
+              {state === 'Completada' && incidentGroups}
 
               <button className="add-card" onClick={() => createTask(state)}>
                 <Plus size={15} /> Añadir tarea

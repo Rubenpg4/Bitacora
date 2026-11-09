@@ -16,6 +16,7 @@ import {
   areTaskDependenciesMet,
   resolveTaskMoveChange,
   snapshotCheck,
+  incidentState,
   type Task,
   type Practice,
   type Entry,
@@ -581,6 +582,27 @@ describe('incidencias', () => {
       solution: 'Corregir la configuración',
       resolvedDate: '2026-09-14',
     });
+  });
+
+  it('guarda el estado abierto y deduce «Completada» de la resolución', () => {
+    const base = { ...blank('incident'), title: 'Fallo', date: '2026-09-12' };
+    const created = d.save('incident', base) as Incident;
+    expect(incidentState(created)).toBe('Por hacer');
+    const moved = d.save(
+      'incident',
+      { ...created, state: 'En revisión' },
+      created.id,
+      created.version,
+    ) as Incident;
+    expect(incidentState(moved)).toBe('En revisión');
+    const resolved = d.save(
+      'incident',
+      { ...moved, solution: 'Corregido', resolvedDate: '2026-09-14' },
+      moved.id,
+      moved.version,
+    ) as Incident;
+    expect(incidentState(resolved)).toBe('Completada');
+    expect(() => d.save('incident', { ...base, state: 'Completada' })).toThrow();
   });
 
   it('rechaza soluciones sin fecha y resoluciones anteriores a la incidencia', () => {

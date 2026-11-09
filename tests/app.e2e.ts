@@ -4014,6 +4014,48 @@ test('Hoy registra decisiones e ideas en el día elegido y las muestra en Diario
   await page.getByRole('button', { name: 'Ideas', exact: true }).click();
   await expect(page.getByRole('button', { name: /Buscar por etiquetas/ })).toBeVisible();
 });
+test('las incidencias del tablero se contraen y se mueven entre estados', async ({ page }) => {
+  await unlock(page);
+  const { blank } = await import('../service/domain');
+  const title = 'Incidencia móvil';
+  await call('save', {
+    kind: 'incident',
+    data: { ...blank('incident'), title, date: madridDate(), description: 'Falla' },
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Tablero', exact: true }).click();
+
+  const column = (name: string) =>
+    page.locator('.kanban-column').filter({
+      has: page.getByRole('heading', { name: new RegExp(name) }),
+    });
+  const heading = page.getByRole('heading', { name: title });
+
+  await expect(column('Por hacer').locator('.incident-group summary')).toContainText(
+    '1 incidencia',
+  );
+  await expect(heading).toBeHidden();
+  await openBoardGroup(page, title);
+  await expect(heading).toBeVisible();
+
+  await page.locator('.incident-card').filter({ hasText: title }).dragTo(column('En curso'));
+  await expect(column('En curso').locator('.incident-card')).toHaveCount(1);
+  await expect(column('Por hacer').locator('.incident-card')).toHaveCount(0);
+  await expect(heading).toBeHidden();
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Tablero', exact: true }).click();
+  await page.getByRole('button', { name: 'Expandir todo' }).click();
+  await expect(column('En curso').getByRole('heading', { name: title })).toBeVisible();
+
+  await page.locator('.incident-card').filter({ hasText: title }).dragTo(column('Completada'));
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('Editar incidencia');
+  await expect(dialog.getByLabel('Estado')).toHaveValue('En curso');
+  await page.keyboard.press('Escape');
+  await expect(column('En curso').locator('.incident-card')).toHaveCount(1);
+});
+
 test('permite borrar una incidencia desde su editor y la retira de las vistas', async ({
   page,
 }) => {

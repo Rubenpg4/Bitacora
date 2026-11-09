@@ -14,6 +14,7 @@ import {
   CATEGORIES,
   PHASES,
   STATES,
+  INCIDENT_OPEN_STATES,
   PRACTICE_STATES,
   CHECK_STATES,
   PRIORITIES,
@@ -946,6 +947,18 @@ export default function RecordEditor({
               onChange={(e) => change('date', e.target.value)}
             />
           </Field>
+          {!data.solution.trim() && (
+            <Field label="Estado">
+              <select
+                value={data.state ?? INCIDENT_OPEN_STATES[0]}
+                onChange={(e) => change('state', e.target.value)}
+              >
+                {INCIDENT_OPEN_STATES.map((state) => (
+                  <option key={state}>{state}</option>
+                ))}
+              </select>
+            </Field>
+          )}
           {input('description', true)}
           <div className="form-grid">
             {input('solution', true)}

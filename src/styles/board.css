@@ -422,6 +422,21 @@
 .board-day-group[open] > summary {
   margin-bottom: 10px;
 }
+.incident-group.unresolved > summary {
+  border-left: 4px solid #df848d;
+}
+.incident-group.unresolved > summary > svg:first-child {
+  color: #cb636e;
+}
+.incident-group.resolved > summary {
+  border-left: 4px solid #72b694;
+}
+.incident-group.resolved > summary > svg:first-child {
+  color: #539b75;
+}
+.incident-group > .incident-card {
+  margin-bottom: 10px;
+}
 .task-card {
   width: 100%;
   background: white;

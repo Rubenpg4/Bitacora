@@ -839,7 +839,7 @@ export default function App() {
   }
   async function moveIncident(
     incident: Incident,
-    change: Partial<Pick<Incident, 'date' | 'resolvedDate' | 'solution'>>,
+    change: Partial<Pick<Incident, 'date' | 'resolvedDate' | 'solution' | 'state'>>,
   ) {
     setDraggedIncidentId('');
     setError('');

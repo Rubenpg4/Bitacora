@@ -1,6 +1,7 @@
 import { objectiveCoverage } from './objectiveCoverage.js';
 
 export const STATES = ['Por hacer', 'En curso', 'En revisión', 'Completada'] as const;
+export const INCIDENT_OPEN_STATES = ['Por hacer', 'En curso', 'En revisión'] as const;
 export const PRIORITIES = ['Crítica', 'Muy alta', 'Alta', 'Media', 'Baja', 'Muy baja'] as const;
 export const CATEGORIES = [
   'Seguridad y privacidad',
@@ -162,6 +163,8 @@ export interface Incident extends Base {
   description: string;
   solution: string;
   resolvedDate: string;
+  /** Columna mientras sigue abierta; «Completada» se deduce de la solución y su fecha. */
+  state?: (typeof INCIDENT_OPEN_STATES)[number];
 }
 export interface Decision extends Base {
   kind: 'decision';
@@ -570,6 +573,10 @@ export function memoryReport(
 
 export function isIncidentResolved(incident: Incident): boolean {
   return Boolean(incident.solution?.trim() && incident.resolvedDate);
+}
+
+export function incidentState(incident: Incident): (typeof STATES)[number] {
+  return isIncidentResolved(incident) ? 'Completada' : (incident.state ?? 'Por hacer');
 }
 
 export function taskCompletionDay(task: Task): string | undefined {

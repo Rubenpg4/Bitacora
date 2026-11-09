@@ -5,6 +5,7 @@ import {
   CATEGORIES,
   PHASES,
   STATES,
+  INCIDENT_OPEN_STATES,
   CHECK_STATES,
   PRACTICE_STATES,
   PRIORITIES,
@@ -93,6 +94,7 @@ export const schemas = {
       description: text,
       solution: text,
       resolvedDate: day,
+      state: z.enum(INCIDENT_OPEN_STATES).optional(),
     })
     .strict(),
   idea: z
